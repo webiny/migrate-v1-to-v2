@@ -1,30 +1,38 @@
-const { get, set } = require("lodash");
+const { get, set, isPlainObject } = require("lodash");
 
 module.exports = (page, files) => {
     [setGeneral, setSocial, setAdditionalVideo, setAdditionalImage].forEach(fn => fn(page, files));
 };
 
 function setGeneral(page, files) {
-    const giSrc = get(page, "settings.general.image.src");
+    const image = get(page, "settings.general.image");
 
-    if (giSrc && giSrc.startsWith("data:")) {
-        return;
-    }
+    if (isPlainObject(image)) {
+        if (image.src && image.src.startsWith("data:")) {
+            return;
+        }
 
-    if (giSrc) {
-        set(page, "settings.general.image", files[giSrc].id);
+        if (image.src) {
+            set(page, "settings.general.image", files[image.src].id);
+        } else {
+            set(page, "settings.general.image", null);
+        }
     }
 }
 
 function setSocial(page, files) {
-    const siSrc = get(page, "settings.social.image.src");
+    const image = get(page, "settings.social.image");
 
-    if (siSrc && siSrc.startsWith("data:")) {
-        return;
-    }
+    if (isPlainObject(image)) {
+        if (image.src && image.src.startsWith("data:")) {
+            return;
+        }
 
-    if (siSrc) {
-        set(page, "settings.social.image", files[siSrc].id);
+        if (image.src) {
+            set(page, "settings.social.image", files[image.src].id);
+        } else {
+            set(page, "settings.social.image", null);
+        }
     }
 }
 
@@ -36,8 +44,16 @@ function setAdditionalVideo(page, files) {
 }
 
 function setAdditionalImage(page, files) {
-    const imageSrc = get(page, "settings.additional.image.src");
-    if (imageSrc) {
-        set(page, "settings.additional.image", files[imageSrc].id);
+    const image = get(page, "settings.additional.image");
+    if (isPlainObject(image)) {
+        if (image.src && image.src.startsWith("data:")) {
+            return;
+        }
+
+        if (image.src) {
+            set(page, "settings.additional.image", files[image.src].id);
+        } else {
+            set(page, "settings.additional.image", null);
+        }
     }
 }
