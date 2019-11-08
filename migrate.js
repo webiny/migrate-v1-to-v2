@@ -1,7 +1,6 @@
 const path = require("path");
 const execa = require("execa");
 const fs = require("fs-extra");
-const rimraf = require("rimraf");
 const { chunk, pick, get } = require("lodash");
 const mime = require("mime-types");
 const { GraphQLClient } = require("graphql-request");
@@ -24,7 +23,6 @@ const { FILES_LOCATION, FILES_PER_CHUNK, AUTH_TOKEN, GRAPHQL_API_URL } = process
 
 module.exports = async (dbInstance, { host, dbName }) => {
     const out = path.join(__dirname, "out");
-    // rimraf.sync(out);
     await fs.ensureDir(out);
 
     const env = { LC_ALL: "C" };
@@ -53,7 +51,8 @@ module.exports = async (dbInstance, { host, dbName }) => {
         CmsPage: "PbPage"
     };
 
-    // 1. Convert all Cms collections to PageBuilder structure
+    // Step 1. Convert all Cms collections to PageBuilder structure
+    // This process operates on the collection files directly, then restores the files into the DB.
     async function convertData() {
         try {
             for (let i = 0; i < cmsCollections.length; i++) {
@@ -133,9 +132,9 @@ module.exports = async (dbInstance, { host, dbName }) => {
         }
     }
 
-    //await convertData();
+    await convertData();
 
-    // 2. Migrate files
+    // Step 2. Migrate files
     const files = {};
 
     // Get images from cms settings and assign them to page-builder settings
