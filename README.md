@@ -15,6 +15,7 @@ Preparation:
 
 On your existing server:  
 - Clone this repo on your server.
+- Run `yarn` to install dependencies
 - Copy `example.env` to `.env` and insert your variable values.
 - The `FILES_LOCATION` should point to the folder where your files are located.
 - Run `yarn migrate`.
