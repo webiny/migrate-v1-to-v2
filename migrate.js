@@ -3,7 +3,6 @@ const execa = require("execa");
 const fs = require("fs-extra");
 const rimraf = require("rimraf");
 const { chunk, pick, get } = require("lodash");
-const { ObjectID } = require("mongodb");
 const mime = require("mime-types");
 const { GraphQLClient } = require("graphql-request");
 const loadJson = require("load-json-file");
@@ -12,9 +11,11 @@ const {
     getFilesFromElement,
     getFilesFromElementPreview,
     getFilesFromPageSettings,
+    getFilesFromPageBuilderSettings,
     injectFilesIntoElement,
     injectFilesIntoElementPreview,
-    injectFilesIntoPageSettings
+    injectFilesIntoPageSettings,
+    injectFilesIntoPageBuilderSettings
 } = require("./utils");
 const { CREATE_FILES, UPLOAD_FILES } = require("./graphql");
 const uploadToS3 = require("./uploadToS3");
@@ -127,41 +128,37 @@ module.exports = async (dbInstance, { host, dbName }) => {
                     );
                 }
             }
-
-            // Copy settings record
-            const data = await dbInstance.collection("Settings").findOne({ key: "cms" });
-            if (!data) {
-                return;
-            }
-
-            const newId = new ObjectID();
-            data.key = "page-builder";
-            data._id = newId;
-            data.id = newId.toString();
-            await dbInstance.collection("Settings").insertOne(data);
         } catch (err) {
             console.log(err);
         }
     }
 
-    await convertData();
+    //await convertData();
 
     // 2. Migrate files
     const files = {};
 
+    // Get images from cms settings and assign them to page-builder settings
+    console.log("👀 Collecting files from Settings...");
+    const cmsSettings = await dbInstance.collection("Settings").findOne({ key: "cms" });
+    const pbSettings = await dbInstance.collection("Settings").findOne({ key: "page-builder" });
+    Object.assign(pbSettings.data, pick(cmsSettings.data, ["favicon", "logo", "social"]));
+    getFilesFromPageBuilderSettings(pbSettings.data, files);
+
     // Get all images from Elements
-    console.log("👀 Collection files from Elements...");
+    console.log("👀 Collecting files from Elements...");
     const elementsJson = await loadJson(path.join(out, "CmsElement.json"));
     collectFromElements(elementsJson, files);
 
     // Get all images from Page content and settings
-    console.log("👀 Collection files from Pages...");
+    console.log("👀 Collecting files from Pages...");
     const pagesJson = await loadJson(path.join(out, "CmsPage.json"));
     collectFromPages(pagesJson, files);
 
     console.log(`Found ${Object.keys(files).length} files!`);
 
     Object.keys(files).forEach(key => {
+        // const filePath = path.resolve(FILES_LOCATION, "test-image.jpg");
         const filePath = path.resolve(FILES_LOCATION, files[key].key);
         files[key] = {
             ...files[key],
@@ -180,7 +177,9 @@ module.exports = async (dbInstance, { host, dbName }) => {
     // Gives an array of chunks (each consists of FILES_COUNT_IN_EACH_BATCH items).
     const filesChunks = chunk(Object.keys(files), FILES_PER_CHUNK);
     await console.log(
-        `Upload files: there are total of ${filesChunks.length} chunks of ${FILES_PER_CHUNK} files to save.`
+        `Upload files: there are total of ${
+            filesChunks.length
+        } chunks of ${FILES_PER_CHUNK} files to save.`
     );
 
     for (let i = 0; i < filesChunks.length; i++) {
@@ -194,13 +193,16 @@ module.exports = async (dbInstance, { host, dbName }) => {
 
         const preSignedPostPayloads = get(response, "files.uploadFiles.data") || [];
         await console.log(
-            `Upload files: received pre-signed POST payloads for ${preSignedPostPayloads.length} files.`
+            `Upload files: received pre-signed POST payloads for ${
+                preSignedPostPayloads.length
+            } files.`
         );
 
         // 2. Use received pre-signed POST payloads to upload files directly to S3.
         const s3UploadProcess = [];
         for (let j = 0; j < filesChunk.length; j++) {
             const currentFile = filesChunk[j];
+            // const buffer = fs.readFileSync(path.resolve(FILES_LOCATION, "test-image.jpg"));
             const buffer = fs.readFileSync(files[currentFile].path);
             s3UploadProcess.push(uploadToS3(buffer, preSignedPostPayloads[j].data));
         }
@@ -220,6 +222,12 @@ module.exports = async (dbInstance, { host, dbName }) => {
             files[key].src = createdFiles[j].src;
         }
     }
+
+    // Inject files into page-builder settings
+    injectFilesIntoPageBuilderSettings(pbSettings.data, files);
+    await dbInstance
+        .collection("Settings")
+        .updateOne({ key: "page-builder" }, { $set: { data: pbSettings.data } });
 
     // Inject file IDs into elements
     injectFilesIntoElements(elementsJson, files);
